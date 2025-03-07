@@ -481,45 +481,79 @@ fun characterHitsObstacle(
     characterHeight: Float,
     obstacle: Obstacle
 ): Boolean {
-    // ปรับ padding ตามประเภทของสิ่งกีดขวาง
-    val collisionPadding = when (obstacle.type) {
-        "arrow" -> 70f  // arrow ต้องการความแม่นยำมากกว่า
-        "ghost" -> 70f  // ghost มีขนาดใหญ่กว่า ปรับให้เหมาะสม
-        else -> 60f     // crow และ knight ใช้ค่าปกติ
+    // แยก padding สำหรับแกน X และ Y
+    val horizontalPadding = when (obstacle.type) {
+        "arrow" -> 30f      // Reduced from 40f to make horizontal collision more precise
+        "ghost" -> 55f
+        else -> 60f
     }
 
-    // คำนวณ hitbox ของตัวละคร
+    val verticalPadding = when (obstacle.type) {
+        "arrow" -> 40f      // Reduced from 80f to make vertical collision more accurate
+        "ghost" -> 70f
+        else -> 55f
+    }
+
+    // Calculate character collision bounds
     val characterBounds = Box(
-        left = characterX + collisionPadding,
-        right = characterX + characterWidth - collisionPadding,
-        top = characterY + collisionPadding,
-        bottom = characterY + characterHeight - collisionPadding
+        left = characterX + horizontalPadding,
+        right = characterX + characterWidth - horizontalPadding,
+        top = characterY + verticalPadding,
+        bottom = characterY + characterHeight - verticalPadding
     )
 
-    // คำนวณ hitbox ของสิ่งกีดขวาง
+// Calculate obstacle collision bounds with special handling for arrows
     val obstacleBounds = Box(
         left = obstacle.x + when(obstacle.type) {
-            "arrow" -> collisionPadding * 1.2f  // ปรับขอบซ้ายของ arrow ให้แคบลง
-            else -> collisionPadding
+            "arrow" -> horizontalPadding
+            else -> horizontalPadding
         },
-        right = obstacle.x + obstacle.width - collisionPadding,
-        top = obstacle.y + collisionPadding,
-        bottom = obstacle.y + obstacle.height - collisionPadding
+        right = obstacle.x + obstacle.width - horizontalPadding,
+        top = obstacle.y + when(obstacle.type) {
+            "arrow" -> verticalPadding * 0.8f  // Tighter vertical bounds for arrows
+            else -> verticalPadding
+        },
+        bottom = obstacle.y + obstacle.height - when(obstacle.type) {
+            "arrow" -> verticalPadding * 0.8f  // Tighter vertical bounds for arrows
+            else -> verticalPadding
+        }
     )
+    // ตรวจสอบระยะห่างในแนวนอนก่อน
+    val horizontalOverlap = characterBounds.right > obstacleBounds.left &&
+            characterBounds.left < obstacleBounds.right
 
-    // เพิ่มการตรวจสอบว่าสิ่งกีดขวางอยู่ในระยะที่ควรตรวจสอบการชนหรือไม่
-    val isInCollisionRange = obstacle.x < characterX + characterWidth * 1.5f &&
-            obstacle.x + obstacle.width > characterX - characterWidth * 0.5f
+    // ถ้ามีการซ้อนทับในแนวนอน จึงตรวจสอบแนวตั้ง
+    // If there's horizontal overlap, check vertical
+    if (horizontalOverlap) {
+        val safetyMargin = when (obstacle.type) {
+            "arrow" -> 10f  // Reduced from 20f for more precise arrow collisions
+            "ghost" -> 25f
+            else -> 15f
+        }
 
-    return if (isInCollisionRange) {
-        // ตรวจสอบการชนเฉพาะเมื่ออยู่ในระยะที่เหมาะสม
-        characterBounds.intersects(obstacleBounds)
-    } else {
-        false
+        // Special collision check for arrows
+        val isCollision = if (obstacle.type == "arrow") {
+            // For arrows, check if character is within a narrower vertical range
+            val arrowVerticalCenter = obstacle.y + (obstacle.height / 2)
+            val characterVerticalCenter = characterY + (characterHeight / 2)
+
+            // Calculate vertical distance between centers
+            val verticalDistance = Math.abs(characterVerticalCenter - arrowVerticalCenter)
+
+            // More precise vertical collision for arrows
+            verticalDistance < (obstacle.height / 3)
+        } else {
+            // Normal collision check for other obstacles
+            characterBounds.bottom > obstacleBounds.top - safetyMargin &&
+                    characterBounds.top < obstacleBounds.bottom + safetyMargin
+        }
+        return isCollision
     }
+
+    return false
 }
 
-// Helper data class สำหรับคำนวณการชน
+// Helper data class สำหรับคำนวณการชน (คงเดิม)
 private data class Box(
     val left: Float,
     val right: Float,
